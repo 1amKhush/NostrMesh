@@ -106,7 +106,11 @@ async function run() {
   const plaintextBuffer = Buffer.from(plainText, 'utf8');
   const encryptedBlob = encryptBlob(plaintextBuffer);
 
-  const blossomClient = new BlossomClient(blossomUrl, secretKey);
+  const blossomClient = new BlossomClient(blossomUrl, secretKey, {
+    uploadAttempts: 1,
+    downloadAttempts: 1,
+    baseDelayMs: 100,
+  });
   const uploaded = await withTimeout(
     blossomClient.uploadBlob(encryptedBlob.ciphertext, 'mesh-test.txt'),
     20000,
@@ -129,7 +133,11 @@ async function run() {
   let publishError = '';
 
   try {
-    await withTimeout(publishEvent(metadataEvent, [relayUrl]), 15000, 'relay publish');
+    await withTimeout(
+      publishEvent(metadataEvent, [relayUrl], { attempts: 1, baseDelayMs: 100 }),
+      15000,
+      'relay publish'
+    );
   } catch (error) {
     publishStatus = 'warn';
     publishError = error instanceof Error ? error.message : String(error);
@@ -143,7 +151,7 @@ async function run() {
   if (publishStatus === 'ok') {
     try {
       const fetchedEvents = await withTimeout(
-        fetchEvents(metadataFilterByHash(uploaded.sha256), [relayUrl]),
+        fetchEvents(metadataFilterByHash(uploaded.sha256), [relayUrl], { attempts: 1, baseDelayMs: 100 }),
         15000,
         'relay fetch'
       );

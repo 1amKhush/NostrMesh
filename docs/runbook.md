@@ -107,6 +107,7 @@ Observed output labels include `OK`, `WARN`, and `INFO` rows, ending with `[mesh
 ### Integration tests (`scripts/run-integration-tests.sh`)
 Expected:
 - tests run via `api/node_modules/.bin/tsx`
+- includes `relay-failure-contract` scenario with isolated API process and unreachable relay
 - tests may emit `SKIP` for known external relay publish issues
 - runner still ends with `[integration] PASS` when all skips are known/expected
 
@@ -116,6 +117,18 @@ Expected:
 
 Known fallback:
 - if relay publish is rejected with `All promises were rejected`, demo prints WARN and runs `scripts/mesh-test.sh` as fallback proof
+
+## API Reliability Behaviors
+
+`POST /blobs` supports optional `Idempotency-Key` header:
+- accepted charset: `[A-Za-z0-9._:-]`, max `128` chars
+- successful responses are cached for `IDEMPOTENCY_TTL_SECONDS`
+- replaying the same key returns the original `201` response body
+- replaying the same key with a different payload returns `409 idempotency_key_conflict`
+
+Retry defaults (exponential backoff) are controlled by `.env`:
+- relay publish/query retries: `RELAY_PUBLISH_ATTEMPTS`, `RELAY_QUERY_ATTEMPTS`, `RELAY_RETRY_BASE_DELAY_MS`
+- blossom upload/download retries: `BLOSSOM_UPLOAD_ATTEMPTS`, `BLOSSOM_DOWNLOAD_ATTEMPTS`, `BLOSSOM_RETRY_BASE_DELAY_MS`
 
 ## Environment Variables
 The root `.env` is managed by `scripts/init-env.sh`.
@@ -151,6 +164,31 @@ Check container status:
 
 ```bash
 docker ps --format 'table {{.Names}}\t{{.Status}}'
+```
+
+## Backup Notes
+Backup the durable state before risky upgrades, schema resets, or cleanup operations.
+
+### PostgreSQL logical backup
+
+```bash
+mkdir -p backups
+docker exec -i nostrmesh-db pg_dump -U nostr_ts_relay nostr_ts_relay > backups/nostrmesh-db-$(date +%Y%m%d-%H%M%S).sql
+```
+
+### Redis snapshot backup
+
+```bash
+mkdir -p backups
+docker exec -i nostrmesh-cache redis-cli -a nostr_ts_relay --rdb /data/backup.rdb
+docker cp nostrmesh-cache:/data/backup.rdb backups/nostrmesh-redis-$(date +%Y%m%d-%H%M%S).rdb
+```
+
+### Blossom blob store backup
+
+```bash
+mkdir -p backups
+docker run --rm -v nostrmesh_blossom-data:/from -v "$PWD/backups":/to alpine sh -c 'tar -czf /to/nostrmesh-blossom-$(date +%Y%m%d-%H%M%S).tar.gz -C /from .'
 ```
 
 ## Troubleshooting

@@ -7,6 +7,18 @@ This file tracks issues encountered in repositories other than NostrMesh during 
 - Project owner: NostrMesh (local project)
 - External repos in this workspace are Fromstr-maintained and should be addressed upstream.
 
+## Verification Results (2026-04-13)
+
+Validated against two baselines:
+- Vendored checkout inside NostrMesh: `4dea77fb94adc2db3b1f84bff295d2d5b6a0a507`
+- Original upstream checkout: `88edd722833075b05a469b6437d9f78a256334b8`
+
+| Issue | Verdict | Attribution | Evidence |
+|---|---|---|---|
+| Issue 1: ambiguous `event_id` in mixed REQ filters | Confirmed on both baselines | Upstream (`nostream-share`) | Query builder uses unqualified `event_id` with tag join path in [nostream-share/src/repositories/event-repository.ts](nostream-share/src/repositories/event-repository.ts#L109) and [nostream-share/src/repositories/event-repository.ts](nostream-share/src/repositories/event-repository.ts#L154). Direct SQL repro returns `column reference "event_id" is ambiguous`. |
+| Issue 2: migration index-name collision | Confirmed on original upstream checkout; mitigated in vendored checkout | Upstream migration bug with local mitigation in NostrMesh vendored copy | Original repo (`88edd...`) clean bootstrap migration fails at `20240120_000000_partition_events_table.js` with `relation "replaceable_events_idx" already exists`. Vendored copy contains an added pre-drop (`DROP INDEX IF EXISTS replaceable_events_idx`) and thus does not reproduce. |
+| Issue 3: replaceable upsert ON CONFLICT arbiter failure | Confirmed on both baselines | Upstream (`nostream-share`) | Upsert SQL from [nostream-share/src/repositories/event-repository.ts](nostream-share/src/repositories/event-repository.ts#L228) fails with `there is no unique or exclusion constraint matching the ON CONFLICT specification` (error code `42P10`) in relay logs and direct SQL repro. API publish failure is a downstream symptom, not NostrMesh route logic. |
+
 ## Issue 1: REQ query can fail with ambiguous event_id
 
 - Repository: nostream-share

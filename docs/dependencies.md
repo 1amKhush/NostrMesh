@@ -42,6 +42,14 @@ The checkout can be bootstrapped via git submodule, configured remote clone, or 
 - `BLOSSOM_PUBLIC_URL`: mesh/public blossom URL written into metadata
 - `RELAY_PUBLIC_URL`: mesh/public relay URL printed by startup scripts
 - `YGGDRASIL_LISTEN_PORT`: yggdrasil listen port (default `12345`)
+- `RELAY_PUBLISH_ATTEMPTS`: retry attempts for relay publish operations (default `3`)
+- `RELAY_QUERY_ATTEMPTS`: retry attempts for relay query operations (default `2`)
+- `RELAY_RETRY_BASE_DELAY_MS`: exponential backoff base delay for relay retries (default `250`)
+- `BLOSSOM_UPLOAD_ATTEMPTS`: retry attempts for blossom upload operations (default `3`)
+- `BLOSSOM_DOWNLOAD_ATTEMPTS`: retry attempts for blossom download/head operations (default `2`)
+- `BLOSSOM_RETRY_BASE_DELAY_MS`: exponential backoff base delay for blossom retries (default `250`)
+- `IDEMPOTENCY_TTL_SECONDS`: cache retention for upload `Idempotency-Key` replay responses (default `600`)
+- `IDEMPOTENCY_MAX_ENTRIES`: upper bound for in-memory idempotency cache entries (default `2000`)
 
 ### Bootstrap controls
 - `NOSTREAM_REPO_URL`: overrides remote source used for bootstrapping `./nostream-share`

@@ -17,6 +17,14 @@
   - Rewrote `docs/architecture.md` for mesh-native deployment model
   - Added `docs/runbook.md` with startup, diagnostics, and multi-node peering steps
   - Refreshed `docs/dependencies.md` with current stack/runtime contract
+- M5 (NostrMesh API for Blob Store/Retrieve): completed
+  - Structured API error envelope applied across blob and event routes
+  - `GET /events/:eventId` now returns parsed metadata alongside event payload
+  - Route-level contracts include explicit 400/404/410/422/502 code mapping
+- M6 (Hardening and demo readiness): completed
+  - Relay and blossom retry/backoff behavior added for publish/query/upload/download paths
+  - Upload idempotency via `Idempotency-Key` replay cache and idempotent delete semantics
+  - Added relay failure contract integration test and runbook backup procedures
 
 ## Goal
 Build a distributed backend storage module over a Yggdrasil mesh network using:
@@ -163,7 +171,6 @@ Acceptance criteria:
 - Short recorded demo or reproducible command log
 
 ## Immediate Next Actions
-1. Continue M5 hardening on API error contracts and status-code consistency.
-2. Expand integration coverage for non-happy-path behavior under relay failure.
-3. Upstream external relay defects tracked in `docs/external-repo-issues.md`.
-4. Keep dependency pin and runbook synchronized with future stack changes.
+1. Upstream external relay defects tracked in `docs/external-repo-issues.md`.
+2. Keep dependency pin and runbook synchronized with future stack changes.
+3. Re-validate integration scripts after each `nostream-share` pin bump.

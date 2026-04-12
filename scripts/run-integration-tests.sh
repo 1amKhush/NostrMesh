@@ -21,4 +21,7 @@ echo "[integration] Running metadata roundtrip test"
 echo "[integration] Running e2e flow test"
 "${ROOT_DIR}/api/node_modules/.bin/tsx" "${ROOT_DIR}/tests/integration/e2e-flow.test.ts"
 
+echo "[integration] Running relay failure contract test"
+"${ROOT_DIR}/api/node_modules/.bin/tsx" "${ROOT_DIR}/tests/integration/relay-failure-contract.test.ts"
+
 echo "[integration] PASS"

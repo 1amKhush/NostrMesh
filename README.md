@@ -249,17 +249,6 @@ High-level process:
 
 Use the full operational walkthrough in `docs/runbook.md`.
 
-## Known Upstream Limitations
-
-Current behavior depends on relay upstream (`nostream-share`) for replaceable-event semantics.
-In some states, replaceable metadata publish/query can fail or return warnings.
-
-NostrMesh behavior in that case:
-
-- API returns structured `502` errors for relay failures.
-- Integration tests may report expected `SKIP` in known upstream paths.
-- `scripts/demo.sh` falls back to `scripts/mesh-test.sh` to still prove mesh/blob functionality.
-
 ## Troubleshooting Quick Hits
 
 - Mesh address missing:

@@ -1,0 +1,13 @@
+# Environment and secrets
+.env
+
+# Dependency artifacts
+**/node_modules/
+
+# Runtime-generated mesh config and keys
+yggdrasil-config/
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.swo

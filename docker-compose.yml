@@ -1,0 +1,160 @@
+services:
+  yggdrasil:
+    build:
+      context: ./docker/yggdrasil
+    container_name: nostrmesh-yggdrasil
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    volumes:
+      - ./yggdrasil-config:/etc/yggdrasil
+    environment:
+      YGGDRASIL_LISTEN_PORT: ${YGGDRASIL_LISTEN_PORT:-12345}
+    entrypoint: /coordinator-entrypoint.sh
+    restart: always
+
+  db:
+    image: postgres:16-alpine
+    container_name: nostrmesh-db
+    environment:
+      POSTGRES_DB: nostr_ts_relay
+      POSTGRES_USER: nostr_ts_relay
+      POSTGRES_PASSWORD: nostr_ts_relay
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nostr_ts_relay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  cache:
+    image: redis:7.0.5-alpine3.16
+    container_name: nostrmesh-cache
+    command: redis-server --loglevel warning --requirepass nostr_ts_relay
+    volumes:
+      - cache-data:/data
+    restart: always
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "nostr_ts_relay", "ping"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: node:22-alpine
+    container_name: nostrmesh-migrate
+    environment:
+      DB_HOST: nostrmesh-db
+      DB_PORT: 5432
+      DB_USER: nostr_ts_relay
+      DB_PASSWORD: nostr_ts_relay
+      DB_NAME: nostr_ts_relay
+    entrypoint:
+      - sh
+      - -c
+      - >
+        cd /code && npm install --no-save --quiet knex@2.4.0 pg@8.8.0 &&
+        node -e "const { Client } = require('pg'); (async () => { const c = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 5432), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME }); await c.connect(); await c.query('DROP INDEX IF EXISTS public.replaceable_events_idx'); await c.end(); })().catch((err) => { console.error(err); process.exit(1); });" &&
+        npx knex migrate:latest
+    volumes:
+      - ./nostream-share/migrations:/code/migrations:ro
+      - ./nostream-share/knexfile.js:/code/knexfile.js:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  relay:
+    build:
+      context: ./nostream-share
+    container_name: nostrmesh-relay
+    user: node:node
+    environment:
+      SECRET: ${SECRET}
+      RELAY_PORT: 8008
+      NOSTR_CONFIG_DIR: /home/node/.nostr
+      DB_HOST: nostrmesh-db
+      DB_PORT: 5432
+      DB_USER: nostr_ts_relay
+      DB_PASSWORD: nostr_ts_relay
+      DB_NAME: nostr_ts_relay
+      DB_MIN_POOL_SIZE: 16
+      DB_MAX_POOL_SIZE: 64
+      DB_ACQUIRE_CONNECTION_TIMEOUT: 60000
+      READ_REPLICA_ENABLED: "false"
+      REDIS_HOST: nostrmesh-cache
+      REDIS_PORT: 6379
+      REDIS_USER: default
+      REDIS_PASSWORD: nostr_ts_relay
+    volumes:
+      - ./nostream-share/.nostr:/home/node/.nostr
+    ports:
+      - "8008:8008"
+    depends_on:
+      cache:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: on-failure
+    networks:
+      - internal
+
+  blossom:
+    build:
+      context: ./blossom
+    container_name: nostrmesh-blossom
+    user: "0:0"
+    environment:
+      BLOSSOM_CONFIG: /app/config.yml
+      BLOSSOM_PUBLIC_URL: ${BLOSSOM_PUBLIC_URL:-http://localhost:3000}
+    volumes:
+      - ./blossom/config.yml:/app/config.yml:ro
+      - blossom-data:/data/blossom
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+    container_name: nostrmesh-api
+    env_file:
+      - .env
+    environment:
+      RELAY_URL: ${RELAY_URL:-ws://nostrmesh-relay:8008}
+      BLOSSOM_URL: ${BLOSSOM_URL:-http://nostrmesh-blossom:3000}
+      BLOSSOM_PUBLIC_URL: ${BLOSSOM_PUBLIC_URL:-http://localhost:3000}
+      API_PORT: ${API_PORT:-4000}
+    ports:
+      - "4000:4000"
+    networks:
+      - internal
+    depends_on:
+      relay:
+        condition: service_started
+      blossom:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  internal:
+    name: nostrmesh
+
+volumes:
+  db-data:
+  cache-data:
+  blossom-data:

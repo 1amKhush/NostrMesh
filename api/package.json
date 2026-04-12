@@ -1,0 +1,27 @@
+{
+  "name": "nostrmesh-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NostrMesh API service",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "axios": "^1.10.0",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.2",
+    "nostr-tools": "^2.13.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.23",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^20.17.57",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

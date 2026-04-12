@@ -1,0 +1,23 @@
+services:
+  blossom:
+    build:
+      context: ./blossom
+    container_name: nostrmesh-blossom
+    environment:
+      BLOSSOM_CONFIG: /app/config.yml
+    volumes:
+      - ./blossom/config.yml:/app/config.yml:ro
+      - blossom-data:/data/blossom
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - default
+      - nostream
+
+networks:
+  nostream:
+    external: true
+
+volumes:
+  blossom-data:

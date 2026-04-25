@@ -6,12 +6,9 @@ source "${SCRIPT_DIR}/common.sh"
 
 require_cmd docker
 require_docker_compose
-ensure_nostream_checkout
-ensure_nostream_dir
+require_root_compose
 
-log "Stopping nostream-share relay stack"
-pushd "${NOSTREAM_DIR}" >/dev/null
-./scripts/stop "$@"
-popd >/dev/null
+log "Stopping relay stack services"
+docker compose -f "${ROOT_COMPOSE_FILE}" --env-file "${ENV_FILE}" stop "$@" relay migrate db cache
 
 log "Relay stack stopped"

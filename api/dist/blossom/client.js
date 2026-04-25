@@ -36,36 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BlossomClient = void 0;
 const axios_1 = __importStar(require("axios"));
 const nostr_tools_1 = require("nostr-tools");
-const errors_1 = require("../errors");
-const MAX_BACKOFF_MS = 4000;
 class BlossomClient {
-    constructor(baseUrl, secretKeyHex, retryConfig) {
+    constructor(baseUrl, secretKeyHex) {
         this.baseUrl = baseUrl.replace(/\/$/, "");
         this.secretKeyHex = secretKeyHex;
-        this.retryConfig = retryConfig;
-    }
-    retryDelayMs(attempt) {
-        return Math.min(this.retryConfig.baseDelayMs * 2 ** Math.max(0, attempt - 1), MAX_BACKOFF_MS);
-    }
-    async wait(ms) {
-        await new Promise((resolve) => setTimeout(resolve, ms));
-    }
-    async withRetry(operation, attempts, execute) {
-        let lastError;
-        for (let attempt = 1; attempt <= attempts; attempt += 1) {
-            try {
-                return await execute();
-            }
-            catch (error) {
-                const normalized = normalizeBlossomError(error, operation);
-                lastError = normalized;
-                if (attempt >= attempts || !isRetryableBlossomError(normalized)) {
-                    throw normalized;
-                }
-                await this.wait(this.retryDelayMs(attempt));
-            }
-        }
-        throw lastError ?? new errors_1.ApiError(502, `blossom_${operation}_failed`, `Blossom ${operation} failed`);
     }
     buildAuthHeader(verb, content, expirationSeconds = 60) {
         const secretKey = hexToBytes(this.secretKeyHex);
@@ -85,7 +59,7 @@ class BlossomClient {
     }
     async uploadBlob(payload, filename) {
         const authHeader = this.buildAuthHeader("upload", `Upload ${filename}`);
-        return this.withRetry("upload", this.retryConfig.uploadAttempts, async () => {
+        try {
             const response = await axios_1.default.put(`${this.baseUrl}/upload`, payload, {
                 headers: {
                     Authorization: authHeader,
@@ -95,7 +69,7 @@ class BlossomClient {
             });
             if (response.status < 200 || response.status >= 300) {
                 const reason = response.headers["x-reason"] || response.statusText;
-                throw new errors_1.ApiError(mapBlossomStatus(response.status, 502), "blossom_upload_failed", `Blossom upload failed: ${reason}`);
+                throw new Error(`Blossom upload failed: ${reason}`);
             }
             const sha256 = response.data?.sha256 ?? response.data?.x;
             if (!sha256) {
@@ -106,11 +80,14 @@ class BlossomClient {
                 size: Number(response.data?.size ?? payload.length),
                 url: response.data?.url ?? `${this.baseUrl}/${sha256}`,
             };
-        });
+        }
+        catch (error) {
+            throw normalizeBlossomError(error, "upload");
+        }
     }
     async downloadBlob(sha256) {
         const authHeader = this.buildAuthHeader("get", `Get ${sha256}`);
-        return this.withRetry("download", this.retryConfig.downloadAttempts, async () => {
+        try {
             const response = await axios_1.default.get(`${this.baseUrl}/${sha256}`, {
                 headers: {
                     Authorization: authHeader,
@@ -120,14 +97,17 @@ class BlossomClient {
             });
             if (response.status < 200 || response.status >= 300) {
                 const reason = response.headers["x-reason"] || response.statusText;
-                throw new errors_1.ApiError(mapBlossomStatus(response.status, 502), "blossom_download_failed", `Blossom download failed: ${reason}`);
+                throw new Error(`Blossom download failed: ${reason}`);
             }
             return Buffer.from(response.data);
-        });
+        }
+        catch (error) {
+            throw normalizeBlossomError(error, "download");
+        }
     }
     async checkBlob(sha256) {
         const authHeader = this.buildAuthHeader("get", `Head ${sha256}`);
-        return this.withRetry("head", this.retryConfig.downloadAttempts, async () => {
+        try {
             const response = await axios_1.default.head(`${this.baseUrl}/${sha256}`, {
                 headers: {
                     Authorization: authHeader,
@@ -135,7 +115,10 @@ class BlossomClient {
                 validateStatus: () => true,
             });
             return response.status >= 200 && response.status < 300;
-        });
+        }
+        catch (error) {
+            throw normalizeBlossomError(error, "head");
+        }
     }
 }
 exports.BlossomClient = BlossomClient;
@@ -154,39 +137,15 @@ function hexToBytes(value) {
     return bytes;
 }
 function normalizeBlossomError(error, operation) {
-    if (error instanceof errors_1.ApiError) {
-        return error;
-    }
     if (error instanceof axios_1.AxiosError) {
         if (!error.response) {
-            return new errors_1.ApiError(502, `blossom_${operation}_network_error`, `Blossom ${operation} failed: network or CORS issue`);
+            return new Error(`Blossom ${operation} failed: network or CORS issue`);
         }
         const reason = (typeof error.response.data === "object" && error.response.data && "error" in error.response.data
             ? String(error.response.data.error)
             : undefined) ||
             String(error.response.headers["x-reason"] || error.response.statusText);
-        return new errors_1.ApiError(mapBlossomStatus(error.response.status, 502), `blossom_${operation}_failed`, `Blossom ${operation} failed: ${reason}`);
+        return new Error(`Blossom ${operation} failed: ${reason}`);
     }
-    if (error instanceof Error) {
-        return new errors_1.ApiError(502, `blossom_${operation}_failed`, error.message);
-    }
-    return new errors_1.ApiError(502, `blossom_${operation}_failed`, `Blossom ${operation} failed`);
-}
-function isRetryableBlossomError(error) {
-    if (error instanceof errors_1.ApiError) {
-        if (error.status === 408 || error.status === 429) {
-            return true;
-        }
-        return error.status >= 500;
-    }
-    return true;
-}
-function mapBlossomStatus(status, fallback) {
-    if (status >= 400 && status < 500) {
-        return status;
-    }
-    if (status >= 500 && status < 600) {
-        return 502;
-    }
-    return fallback;
+    return error instanceof Error ? error : new Error(`Blossom ${operation} failed`);
 }

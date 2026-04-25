@@ -12,9 +12,9 @@ NostrMesh stores blob metadata in Nostr kind `34578` parameterized replaceable e
   "tags": [
     ["d", "<sha256-hash>"],
     ["client", "nostrmesh"],
-    ["encrypted", "aead-v1"]
+    ["encrypted", "nip44"]
   ],
-  "content": "<base64-aead-payload>"
+  "content": "<nip44-encrypted-json>"
 }
 ```
 
@@ -24,18 +24,7 @@ NostrMesh stores blob metadata in Nostr kind `34578` parameterized replaceable e
 | --- | --- | --- | --- |
 | `d` | Yes | SHA-256 hash hex string | Replaceable identifier and blob lookup key |
 | `client` | Yes | `nostrmesh` | Producer identification |
-| `encrypted` | Yes | `aead-v1` | Declares payload format |
-
-## Encrypted Content Format
-
-`content` is base64 of binary payload:
-
-- Byte 0: format version (`1`)
-- Bytes 1-12: AES-GCM IV
-- Bytes 13-28: AES-GCM auth tag
-- Bytes 29+: encrypted JSON bytes
-
-The encryption key is derived from API secret material and is not directly embedded in the event tags.
+| `encrypted` | Yes | `nip44` | Declares payload format |
 
 ## Encrypted Content Schema
 
@@ -59,7 +48,7 @@ Field definitions:
 - `size`: blob size in bytes.
 - `type`: MIME type.
 - `folder`: virtual folder path, default `/`.
-- `uploadedAt`: unix timestamp in seconds.
+- `uploadedAt`: unix timestamp (seconds or milliseconds, but one convention per deployment).
 - `server`: Blossom base URL used for upload.
 - `encryptionKey`: hex private key for per-file encryption strategy.
 - `deleted`: optional soft-delete marker.
@@ -80,6 +69,6 @@ Field definitions:
 - `folder` must start with `/`.
 
 ## Compatibility Contract
-- The field model intentionally follows established Fromstr metadata conventions.
-- The encryption payload format in this implementation is `aead-v1` and should be treated as authoritative.
-- New fields should remain additive and optional to avoid consumer breakage.
+- This schema intentionally mirrors formstr-drive metadata semantics.
+- NostrMesh should avoid adding required fields that break existing consumers.
+- New fields should be additive and optional.

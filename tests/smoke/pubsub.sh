@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../../scripts/common.sh"
 require_cmd docker
 
 if ! docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-relay'; then
-  echo "[pubsub] nostrmesh-relay container is not running. Start stack first with scripts/stack-up.sh" >&2
+  echo "[pubsub] nostrmesh-relay container is not running. Start relay first with scripts/relay-up.sh" >&2
   exit 1
 fi
 
@@ -57,12 +57,14 @@ async function run() {
 
   const ws = new WebSocket(relayUrl);
   const subId = `nostrmesh-smoke-${Date.now()}`;
+  const retrySubId = `${subId}-retry`;
   let gotOk = false;
+  let gotEvent = false;
   let eventSent = false;
   let authInProgress = false;
 
   const failTimer = setTimeout(() => {
-    console.error('[pubsub] timeout waiting for publish confirmation');
+    console.error('[pubsub] timeout waiting for publish/subscription confirmation');
     process.exit(1);
   }, 20000);
 
@@ -103,11 +105,13 @@ async function run() {
       if (msg[2] === true) {
         gotOk = true;
 
-        clearTimeout(failTimer);
-        ws.send(JSON.stringify(['CLOSE', subId]));
-        ws.close();
-        console.log('[pubsub] PASS (publish acknowledged)');
-        process.exit(0);
+        const retryFilter = {
+          kinds: [1],
+          '#t': ['nostrmesh-smoke'],
+          ids: [event.id],
+          limit: 1,
+        };
+        ws.send(JSON.stringify(['REQ', retrySubId, retryFilter]));
       } else {
         console.error('[pubsub] relay rejected event:', msg[3]);
         process.exit(1);
@@ -146,8 +150,20 @@ async function run() {
       }, 200);
     }
 
+    if (kind === 'EVENT' && (msg[1] === subId || msg[1] === retrySubId) && msg[2] && msg[2].id === event.id) {
+      gotEvent = true;
+    }
+
     if (kind === 'NOTICE') {
       console.log('[pubsub] relay notice:', msg[1]);
+    }
+
+    if (gotOk && gotEvent) {
+      clearTimeout(failTimer);
+      ws.send(JSON.stringify(['CLOSE', subId]));
+      ws.close();
+      console.log('[pubsub] PASS');
+      process.exit(0);
     }
   });
 

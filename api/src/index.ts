@@ -1,6 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { config } from "./config";
-import { errorMessage, isApiError } from "./errors";
 import { blobsRouter } from "./routes/blobs";
 import { eventsRouter } from "./routes/events";
 
@@ -14,6 +13,7 @@ app.get("/health", (_req: Request, res: Response) => {
     service: "nostrmesh-api",
     relayUrls: config.relayUrls,
     blossomUrl: config.blossomUrl,
+    blossomPublicUrl: config.blossomPublicUrl,
   });
 });
 
@@ -21,25 +21,11 @@ app.use("/blobs", blobsRouter);
 app.use("/events", eventsRouter);
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  if (isApiError(error)) {
-    res.status(error.status).json({
-      error: error.message,
-      code: error.code,
-      details: error.details,
-    });
-    return;
-  }
   if (error instanceof Error) {
-    res.status(500).json({
-      error: error.message,
-      code: "internal_error",
-    });
+    res.status(500).json({ error: error.message });
     return;
   }
-  res.status(500).json({
-    error: errorMessage(error),
-    code: "internal_error",
-  });
+  res.status(500).json({ error: "Unknown error" });
 });
 
 app.listen(config.port, () => {

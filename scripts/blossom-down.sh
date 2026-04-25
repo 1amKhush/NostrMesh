@@ -6,11 +6,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 require_cmd docker
 require_docker_compose
-
-if [[ ! -f "${BLOSSOM_COMPOSE_FILE}" ]]; then
-  echo "Missing ${BLOSSOM_COMPOSE_FILE}" >&2
-  exit 1
-fi
+require_root_compose
 
 log "Stopping local Blossom service"
-docker compose -f "${BLOSSOM_COMPOSE_FILE}" down "$@"
+docker compose -f "${ROOT_COMPOSE_FILE}" --env-file "${ENV_FILE}" stop "$@" blossom

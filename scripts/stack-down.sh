@@ -8,6 +8,7 @@ require_cmd docker
 require_docker_compose
 require_root_compose
 
-docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" down "$@"
+log "Stopping NostrMesh stack"
+docker compose -f "${ROOT_COMPOSE_FILE}" --env-file "${ENV_FILE}" down "$@"
 
 echo "NostrMesh stack stopped"

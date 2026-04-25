@@ -60,7 +60,7 @@ const defaultConfig: BlossomConfig = {
     maxUploadBytes: 100 * 1024 * 1024,
   },
   cors: {
-    allowedOrigins: ["*"],
+    allowedOrigins: ["http://localhost:3000", "http://localhost:4000"],
   },
   auth: {
     requireAuth: true,
@@ -70,17 +70,13 @@ const defaultConfig: BlossomConfig = {
 
 function loadConfig(): BlossomConfig {
   const configPath = process.env.BLOSSOM_CONFIG ?? path.resolve(process.cwd(), "config.yml");
-  const configuredPublicUrl = process.env.BLOSSOM_PUBLIC_URL?.trim();
-  const publicBaseUrl = configuredPublicUrl
-    ? configuredPublicUrl.replace(/\/$/, "")
-    : undefined;
-
+  const envPublicBaseUrl = process.env.BLOSSOM_PUBLIC_URL?.replace(/\/$/, "");
   if (!existsSync(configPath)) {
     return {
       ...defaultConfig,
       server: {
         ...defaultConfig.server,
-        publicBaseUrl: publicBaseUrl ?? defaultConfig.server.publicBaseUrl,
+        publicBaseUrl: envPublicBaseUrl ?? defaultConfig.server.publicBaseUrl,
       },
     };
   }
@@ -91,9 +87,7 @@ function loadConfig(): BlossomConfig {
       host: loaded.server?.host ?? defaultConfig.server.host,
       port: loaded.server?.port ?? defaultConfig.server.port,
       publicBaseUrl:
-        publicBaseUrl ??
-        loaded.server?.publicBaseUrl?.replace(/\/$/, "") ??
-        defaultConfig.server.publicBaseUrl,
+        envPublicBaseUrl ?? loaded.server?.publicBaseUrl ?? defaultConfig.server.publicBaseUrl,
     },
     storage: {
       path: loaded.storage?.path ?? defaultConfig.storage.path,
@@ -224,6 +218,7 @@ app.get("/health", (_req: Request, res: Response) => {
     status: "ok",
     service: "nostrmesh-blossom",
     storagePath,
+    publicBaseUrl: config.server.publicBaseUrl,
     requireAuth: config.auth.requireAuth,
   });
 });

@@ -37,15 +37,22 @@ const defaultConfig = {
 };
 function loadConfig() {
     const configPath = process.env.BLOSSOM_CONFIG ?? path_1.default.resolve(process.cwd(), "config.yml");
+    const envPublicBaseUrl = process.env.BLOSSOM_PUBLIC_URL?.replace(/\/$/, "");
     if (!(0, fs_1.existsSync)(configPath)) {
-        return defaultConfig;
+        return {
+            ...defaultConfig,
+            server: {
+                ...defaultConfig.server,
+                publicBaseUrl: envPublicBaseUrl ?? defaultConfig.server.publicBaseUrl,
+            },
+        };
     }
     const loaded = js_yaml_1.default.load((0, fs_1.readFileSync)(configPath, "utf8"));
     return {
         server: {
             host: loaded.server?.host ?? defaultConfig.server.host,
             port: loaded.server?.port ?? defaultConfig.server.port,
-            publicBaseUrl: loaded.server?.publicBaseUrl ?? defaultConfig.server.publicBaseUrl,
+            publicBaseUrl: envPublicBaseUrl ?? loaded.server?.publicBaseUrl ?? defaultConfig.server.publicBaseUrl,
         },
         storage: {
             path: loaded.storage?.path ?? defaultConfig.storage.path,
@@ -154,6 +161,7 @@ app.get("/health", (_req, res) => {
         status: "ok",
         service: "nostrmesh-blossom",
         storagePath,
+        publicBaseUrl: config.server.publicBaseUrl,
         requireAuth: config.auth.requireAuth,
     });
 });

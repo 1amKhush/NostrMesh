@@ -19,15 +19,15 @@ fi
 
 echo "[relay-connectivity] Relay name: ${relay_name}"
 
-if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-yggdrasil'; then
-  ygg_address="$(docker logs nostrmesh-yggdrasil 2>&1 | awk -F': ' '/Address/{print $2}' | tail -n1 || true)"
-  if [[ -z "${ygg_address}" ]]; then
-    echo "[relay-connectivity] Could not determine Yggdrasil address from logs" >&2
+if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-vpn'; then
+  tunnel_ip="$(${SCRIPT_DIR}/../../scripts/discover-tunnel-ip.sh || true)"
+  if [[ -z "${tunnel_ip}" ]]; then
+    echo "[relay-connectivity] Could not determine nostr-vpn tunnel IP" >&2
     exit 1
   fi
-  echo "[relay-connectivity] Yggdrasil address: ${ygg_address}"
+  echo "[relay-connectivity] Tunnel IP: ${tunnel_ip}"
 else
-  echo "[relay-connectivity] WARN: nostrmesh-yggdrasil container not running (fallback mode)"
+  echo "[relay-connectivity] WARN: nostrmesh-vpn container not running"
 fi
 
 echo "[relay-connectivity] PASS"

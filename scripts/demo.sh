@@ -32,10 +32,10 @@ if ! docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-api'; then
 fi
 
 api_base="${API_HTTP_URL:-http://127.0.0.1:4000}"
-mesh_address="$(${SCRIPT_DIR}/discover-mesh-address.sh || true)"
-if [[ -n "${mesh_address}" ]]; then
-  relay_mesh_url="ws://[${mesh_address}]:8008"
-  blossom_mesh_url="http://[${mesh_address}]:3000"
+tunnel_ip="$(${SCRIPT_DIR}/discover-tunnel-ip.sh || true)"
+if [[ -n "${tunnel_ip}" ]]; then
+  relay_mesh_url="ws://${tunnel_ip}:8008"
+  blossom_mesh_url="http://${tunnel_ip}:3000"
 else
   relay_mesh_url="(not detected)"
   blossom_mesh_url="(not detected)"

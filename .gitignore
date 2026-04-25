@@ -6,6 +6,7 @@
 
 # Runtime-generated mesh config and keys
 yggdrasil-config/
+nvpn-config/
 
 # OS/editor noise
 .DS_Store

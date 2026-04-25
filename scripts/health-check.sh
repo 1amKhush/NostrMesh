@@ -57,22 +57,12 @@ check_http "relay-http" "${RELAY_HTTP_URL}" 'Accept: application/nostr+json'
 check_http "blossom-http" "${BLOSSOM_HTTP_URL}/health"
 check_http "api-http" "${API_HTTP_URL}/health"
 
-check_container "nostrmesh-relay"
+check_container "nostrmesh-vpn"
 check_container "nostrmesh-db"
 check_container "nostrmesh-cache"
+check_container "nostrmesh-relay"
 check_container "nostrmesh-blossom"
 check_container "nostrmesh-api"
-
-if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-yggdrasil'; then
-  check_container "nostrmesh-yggdrasil"
-else
-  if [[ "${NOSTRMESH_ALLOW_NO_YGGDRASIL:-0}" == "1" ]]; then
-    print_row "container:nostrmesh-yggdrasil" "WARN" "not running (fallback mode)"
-  else
-    print_row "container:nostrmesh-yggdrasil" "FAIL" "not running"
-    overall=1
-  fi
-fi
 
 if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-db'; then
   if docker exec nostrmesh-db pg_isready -U nostr_ts_relay >/dev/null 2>&1; then
@@ -92,16 +82,13 @@ if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-cache'; then
   fi
 fi
 
-ygg_addr="$("${SCRIPT_DIR}/discover-mesh-address.sh" || true)"
-if docker ps --format '{{.Names}}' | grep -qx 'nostrmesh-yggdrasil' && [[ -n "${ygg_addr}" ]]; then
-  print_row "yggdrasil" "OK" "${ygg_addr}"
-  check_http "relay-mesh-http" "http://[${ygg_addr}]:8008" 'Accept: application/nostr+json'
-  check_http "blossom-mesh" "http://[${ygg_addr}]:3000/health"
-elif [[ "${NOSTRMESH_ALLOW_NO_YGGDRASIL:-0}" == "1" ]]; then
-  print_row "yggdrasil" "WARN" "not running (fallback mode)"
+tunnel_ip="$(${SCRIPT_DIR}/discover-tunnel-ip.sh || true)"
+if [[ -n "${tunnel_ip}" ]]; then
+  print_row "nvpn-tunnel-ip" "OK" "${tunnel_ip}"
+  check_http "relay-mesh-http" "http://${tunnel_ip}:8008" 'Accept: application/nostr+json'
+  check_http "blossom-mesh-http" "http://${tunnel_ip}:3000/health"
 else
-  print_row "yggdrasil" "FAIL" "address not found in logs"
-  overall=1
+  print_row "nvpn-tunnel-ip" "WARN" "not detected yet"
 fi
 
 exit "${overall}"

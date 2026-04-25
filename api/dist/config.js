@@ -41,35 +41,13 @@ function getOrCreateSecretKey() {
     persistSecret(generated);
     return generated;
 }
-function normalizeUrl(input) {
-    return input.replace(/\/$/, "");
-}
-function parsePositiveInt(value, fallback, min, max) {
-    const normalized = value?.trim() ?? "";
-    if (!/^\d+$/.test(normalized)) {
-        return fallback;
-    }
-    const parsed = Number.parseInt(normalized, 10);
-    if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
-        return fallback;
-    }
-    return Math.min(Math.max(parsed, min), max);
-}
-const relayUrls = splitRelayUrls(process.env.RELAY_URLS ?? process.env.RELAY_URL ?? "ws://nostrmesh-relay:8008");
-const blossomUrl = normalizeUrl(process.env.BLOSSOM_URL ?? "http://nostrmesh-blossom:3000");
-const blossomPublicUrl = normalizeUrl(process.env.BLOSSOM_PUBLIC_URL ?? "http://localhost:3000");
+const relayUrls = splitRelayUrls(process.env.RELAY_URLS ?? process.env.RELAY_URL);
+const blossomUrl = (process.env.BLOSSOM_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const blossomPublicUrl = (process.env.BLOSSOM_PUBLIC_URL ?? blossomUrl).replace(/\/$/, "");
 exports.config = {
     port: Number.parseInt(process.env.API_PORT ?? "4000", 10),
     relayUrls,
     blossomUrl,
     blossomPublicUrl,
     nostrSecretKey: getOrCreateSecretKey(),
-    relayPublishAttempts: parsePositiveInt(process.env.RELAY_PUBLISH_ATTEMPTS, 3, 1, 8),
-    relayQueryAttempts: parsePositiveInt(process.env.RELAY_QUERY_ATTEMPTS, 2, 1, 8),
-    relayRetryBaseDelayMs: parsePositiveInt(process.env.RELAY_RETRY_BASE_DELAY_MS, 250, 50, 5000),
-    blossomUploadAttempts: parsePositiveInt(process.env.BLOSSOM_UPLOAD_ATTEMPTS, 3, 1, 8),
-    blossomDownloadAttempts: parsePositiveInt(process.env.BLOSSOM_DOWNLOAD_ATTEMPTS, 2, 1, 8),
-    blossomRetryBaseDelayMs: parsePositiveInt(process.env.BLOSSOM_RETRY_BASE_DELAY_MS, 250, 50, 5000),
-    idempotencyTtlSeconds: parsePositiveInt(process.env.IDEMPOTENCY_TTL_SECONDS, 600, 30, 86400),
-    idempotencyMaxEntries: parsePositiveInt(process.env.IDEMPOTENCY_MAX_ENTRIES, 2000, 100, 100000),
 };

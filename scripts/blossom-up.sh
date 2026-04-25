@@ -7,19 +7,12 @@ source "${SCRIPT_DIR}/common.sh"
 require_cmd docker
 require_cmd curl
 require_docker_compose
+require_root_compose
 
-if [[ ! -f "${BLOSSOM_COMPOSE_FILE}" ]]; then
-  echo "Missing ${BLOSSOM_COMPOSE_FILE}" >&2
-  exit 1
-fi
+"${SCRIPT_DIR}/init-env.sh"
 
-if ! docker network inspect nostream >/dev/null 2>&1; then
-  log "Creating shared docker network: nostream"
-  docker network create nostream >/dev/null
-fi
-
-log "Starting local Blossom service"
-docker compose -f "${BLOSSOM_COMPOSE_FILE}" up -d --build "$@"
+log "Starting Blossom service"
+docker compose -f "${ROOT_COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --build "$@" nvpn blossom
 
 log "Waiting for Blossom health endpoint at ${BLOSSOM_HTTP_URL}/health"
 if ! wait_for_http "${BLOSSOM_HTTP_URL}/health" 90; then

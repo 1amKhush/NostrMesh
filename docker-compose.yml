@@ -1,18 +1,21 @@
 services:
-  yggdrasil:
-    build:
-      context: ./docker/yggdrasil
-    container_name: nostrmesh-yggdrasil
+  nvpn:
+    image: ghcr.io/mmalmi/nostr-vpn:latest
+    container_name: nostrmesh-vpn
     network_mode: host
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun
     volumes:
-      - ./yggdrasil-config:/etc/yggdrasil
+      - ./nvpn-config:/config
     environment:
-      YGGDRASIL_LISTEN_PORT: ${YGGDRASIL_LISTEN_PORT:-12345}
-    entrypoint: /coordinator-entrypoint.sh
+      NVPN_CONFIG: ${NVPN_CONFIG:-/config/config.toml}
+    command:
+      - nvpn
+      - connect
+      - --config
+      - /config/config.toml
     restart: always
 
   db:
@@ -24,6 +27,16 @@ services:
       POSTGRES_PASSWORD: nostr_ts_relay
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./nostream-share/postgresql.conf:/postgresql.conf:ro
+      - ./pg_hba.conf:/pg_hba.conf:ro
+    command:
+      - postgres
+      - -c
+      - config_file=/postgresql.conf
+      - -c
+      - hba_file=/pg_hba.conf
+    ports:
+      - "5432:5432"
     restart: always
     networks:
       - internal
@@ -147,6 +160,8 @@ services:
       relay:
         condition: service_started
       blossom:
+        condition: service_started
+      nvpn:
         condition: service_started
     restart: unless-stopped
 

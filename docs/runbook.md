@@ -3,11 +3,11 @@
 ## Scope
 This runbook covers day-to-day operation of the self-contained NostrMesh stack in this repository:
 
-- `yggdrasil`, `db`, `cache`, `migrate`, `relay`, `blossom`, `api`
+- `nvpn` (nostr-vpn), `db`, `cache`, `migrate`, `relay`, `blossom`, `api`
 - bootstrap and health scripts in `scripts/`
 - smoke, mesh, integration, and demo validation flows
 
-It also includes manual multi-node peering steps for Yggdrasil.
+It also includes the two-node PoC checklist and peering steps for nostr-vpn.
 
 ## Prerequisites
 Install and verify these host tools:
@@ -22,9 +22,9 @@ git --version
 ```
 
 Host requirements:
-- Linux host with `/dev/net/tun` available for Yggdrasil
+- Linux host with `/dev/net/tun` available for WireGuard (nostr-vpn)
 - Docker daemon permissions for the current user
-- Ports `3000`, `4000`, `8008`, and `12345` free on host
+- Ports `3000`, `4000`, `8008` free on host
 
 ## Quick Start (Single Node)
 From repository root:
@@ -91,7 +91,7 @@ Discover current mesh address any time:
 Expected:
 - `relay-http`, `blossom-http`, `api-http` are `OK`
 - all `nostrmesh-*` containers are `OK`
-- mesh endpoint checks are `OK` when Yggdrasil address is discovered
+- mesh endpoint checks are `OK` when tunnel IP is discovered
 
 ### `scripts/mesh-test.sh`
 Expected:
@@ -141,11 +141,10 @@ Core variables:
 - `BLOSSOM_URL`: internal blossom URL for API
 - `BLOSSOM_PUBLIC_URL`: URL written to metadata `server` field
 - `RELAY_PUBLIC_URL`: informational relay URL shown by scripts
-- `YGGDRASIL_LISTEN_PORT`: ygg listen port (default `12345`)
 
 Bootstrap/fallback controls:
 - `NOSTREAM_REPO_URL`: source URL for bootstrapping `./nostream-share`
-- `NOSTRMESH_ALLOW_NO_YGGDRASIL`: allows fallback behavior in selected scripts
+- `NOSTRMESH_ALLOW_NO_TUNNEL`: allows fallback behavior in selected scripts
 
 After changing `.env`, reapply services:
 
@@ -157,7 +156,7 @@ docker compose --env-file .env -f docker-compose.yml up -d api blossom relay
 Follow all core logs:
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml logs -f yggdrasil relay blossom api db cache
+docker compose --env-file .env -f docker-compose.yml logs -f nvpn relay blossom api db cache
 ```
 
 Check container status:
@@ -193,19 +192,19 @@ docker run --rm -v nostrmesh_blossom-data:/from -v "$PWD/backups":/to alpine sh 
 
 ## Troubleshooting
 
-### 1) Yggdrasil mesh address not discovered
+### 1) Tunnel IP / Mesh address not discovered
 Symptoms:
-- `scripts/discover-mesh-address.sh` returns empty
+- `scripts/discover-tunnel-ip.sh` returns empty
 - mesh checks fail in health report
 
 Actions:
-1. Confirm yggdrasil container is running:
+1. Confirm nostr-vpn container is running:
    ```bash
-   docker ps --format '{{.Names}}' | grep -x nostrmesh-yggdrasil
+   docker ps --format '{{.Names}}' | grep -x nostrmesh-vpn
    ```
-2. Inspect ygg logs:
+2. Inspect nvpn logs:
    ```bash
-   docker logs --tail 200 nostrmesh-yggdrasil
+   docker logs --tail 200 nostrmesh-vpn
    ```
 3. Re-run env init and restart URL-dependent services:
    ```bash
@@ -215,7 +214,7 @@ Actions:
 
 ### 2) `/dev/net/tun` or `NET_ADMIN` related startup failure
 Symptoms:
-- yggdrasil container exits immediately
+- nostr-vpn container exits immediately
 
 Actions:
 1. Verify host TUN device:
@@ -260,63 +259,66 @@ Actions:
    ./scripts/stack-up.sh
    ```
 
-## Multi-Node Manual Peering (Yggdrasil)
-These steps are manual and intended for controlled testing.
+## Two-Node PoC Checklist (nostr-vpn)
+These steps outline setting up two nodes (Node A and Node B) in a private `nostr-vpn` mesh and configuring PostgreSQL FDW to distribute relay events across both.
 
-### Step 1: Start Node A and capture identity
-On Node A:
-
-```bash
-./scripts/stack-up.sh
-docker logs --tail 200 nostrmesh-yggdrasil
-```
-
-Capture:
-- Node A public key
-- Node A public peer endpoint (`tcp://<public-ip>:12345`)
-- Node A mesh address from `scripts/discover-mesh-address.sh`
-
-### Step 2: Generate Node B config
-On Node B:
+### Step 1: Initialize the Mesh Network on Node A
+On Node A, create the `nostr-vpn` network and generate an invite:
 
 ```bash
-./scripts/stack-up.sh
-./scripts/stack-down.sh
+./scripts/mesh-init.sh
 ```
 
-This ensures `yggdrasil-config/yggdrasil.conf` exists.
+This script creates `./nvpn-config`, initializes the node as a participant, and prints a **Mesh Invite Link**. Note down this link.
 
-### Step 3: Add Node A as a peer on Node B
-On Node B, edit `yggdrasil-config/yggdrasil.conf` and set:
-- `Peers` to include Node A peer endpoint
-- `AllowedPublicKeys` to include Node A public key
-
-Example with `jq`:
-
-```bash
-jq '.Peers += ["tcp://<node-a-public-ip>:12345"] | .AllowedPublicKeys += ["<node-a-public-key>"]' \
-  yggdrasil-config/yggdrasil.conf > /tmp/ygg.conf && mv /tmp/ygg.conf yggdrasil-config/yggdrasil.conf
-```
-
-Optional but recommended: add reciprocal peer/key entries on Node A.
-
-### Step 4: Restart both nodes
-On each node:
+### Step 2: Start Node A
+Start the full stack on Node A:
 
 ```bash
 ./scripts/stack-up.sh
 ```
 
-### Step 5: Verify cross-node mesh reachability
-From Node B host:
+Node A is now running on a specific `10.44.x.y` tunnel IP. You can verify it with `./scripts/health-check.sh` and note the `Blossom mesh` IP.
+
+### Step 3: Join the Mesh from Node B
+On Node B, initialize the network by joining using the invite link from Node A:
 
 ```bash
-NODE_A_MESH="<node-a-mesh-ip>"
-curl -fsS -H 'Accept: application/nostr+json' "http://[${NODE_A_MESH}]:8008" >/dev/null
-curl -fsS "http://[${NODE_A_MESH}]:3000/health" >/dev/null
+./scripts/mesh-init.sh "<INVITE_LINK_FROM_NODE_A>"
 ```
 
-If both succeed, relay and blossom are reachable across NAT boundaries via mesh.
+This joins Node B to the private mesh network created by Node A.
+
+### Step 4: Start Node B
+Start the full stack on Node B:
+
+```bash
+./scripts/stack-up.sh
+```
+
+Note Node B's tunnel IP using:
+
+```bash
+./scripts/discover-tunnel-ip.sh
+```
+
+### Step 5: Verify Mesh Connectivity
+From Node B, ensure Node A's Blossom server is reachable over the WireGuard tunnel:
+
+```bash
+curl -fsS "http://<NODE_A_TUNNEL_IP>:3000/health"
+```
+
+### Step 6: Setup FDW from Node A to Node B
+On Node A, configure the Foreign Data Wrapper to route a partition of its events to Node B's database over the WireGuard tunnel.
+Use the deterministic FDW setup script:
+
+```bash
+# E.g. forward all events from timestamp 0 to MAXVALUE to node_b
+./scripts/setup-fdw.sh <NODE_B_TUNNEL_IP> node_b 0 MAXVALUE
+```
+
+Node A's PostgreSQL will now natively fan-out queries and storage across the WireGuard tunnel to Node B's PostgreSQL partition.
 
 ## Shutdown
 

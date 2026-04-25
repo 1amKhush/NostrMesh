@@ -3,9 +3,9 @@
 Mesh-native encrypted storage backend built on:
 - Nostr relay for metadata and pub/sub
 - Blossom-compatible HTTP server for encrypted blobs
-- Yggdrasil IPv6 mesh networking for NAT traversal
+- nostr-vpn (WireGuard) mesh networking for NAT traversal
 
-NostrMesh is designed so nodes behind home or office NAT are still reachable by peers on the mesh.
+NostrMesh is designed so nodes behind home or office NAT are still reachable by peers on the private mesh.
 
 ## Table Of Contents
 
@@ -28,10 +28,10 @@ NostrMesh is designed so nodes behind home or office NAT are still reachable by 
 ## What This Project Solves
 
 Traditional self-hosted relay/blob stacks break down under NAT and inbound network restrictions.
-NostrMesh uses Yggdrasil as the networking substrate so every node can expose relay and blossom endpoints over mesh IPv6:
+NostrMesh uses **nostr-vpn** as the networking substrate. Every node gets a stable tunnel IP (`10.44.x.y`) on the WireGuard mesh, exposing relay and blossom endpoints across NATs:
 
-- Relay: `ws://[mesh-ip]:8008`
-- Blossom: `http://[mesh-ip]:3000`
+- Relay: `ws://10.44.x.y:8008`
+- Blossom: `http://10.44.x.y:3000`
 
 The API layer binds both systems into a practical upload, resolve, and download flow while preserving encrypted-at-rest semantics.
 
@@ -41,7 +41,7 @@ The API layer binds both systems into a practical upload, resolve, and download 
 
 | Service | Role | Port |
 | --- | --- | --- |
-| `yggdrasil` | Mesh identity and NAT traversal | `12345` listen |
+| `nvpn` | Mesh identity and NAT traversal (WireGuard via nostr-vpn) | tunnel host |
 | `db` | Relay persistence (PostgreSQL) | internal (`5432`) |
 | `cache` | Relay cache/rate infra (Redis) | internal (`6379`) |
 | `migrate` | Relay schema migrations | one-shot job |
@@ -54,6 +54,41 @@ The API layer binds both systems into a practical upload, resolve, and download 
 - Metadata plane: Nostr events (`kind 34578`, replaceable by `d=<sha256>`)
 - Blob plane: Blossom content-addressed objects (`sha256`)
 - Auth plane: Blossom auth events (`kind 24242`, signed, short expiration)
+
+### System Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph mesh["nostr-vpn Private Mesh (WireGuard tunnels)"]
+        subgraph nodeA["Node A — 10.44.12.3"]
+            NVPN_A["nvpn sidecar<br/>(host network, TUN)"]
+            subgraph stackA["docker-compose"]
+                RA["Relay :8008"]
+                BA["Blossom :3000"]
+                AA["API :4000"]
+                DBA["PostgreSQL"]
+            end
+            NVPN_A ---|":8008"| RA
+            NVPN_A ---|":3000"| BA
+            RA --- DBA
+            AA -->|"WS"| RA
+            AA -->|"HTTP"| BA
+        end
+        subgraph nodeB["Node B — 10.44.7.9"]
+            NVPN_B["nvpn sidecar<br/>(host network, TUN)"]
+            subgraph stackB["docker-compose"]
+                RB["Relay :8008"]
+                BB["Blossom :3000"]
+                DBB["PostgreSQL"]
+            end
+            NVPN_B ---|":8008"| RB
+            NVPN_B ---|":3000"| BB
+            RB --- DBB
+        end
+        NVPN_A ===|"WireGuard P2P tunnel<br/>NAT-pierced via STUN"| NVPN_B
+        DBA -.-|"FDW over 10.44.x.y:5432"| DBB
+    end
+```
 
 ### Flow Summary
 
@@ -79,7 +114,6 @@ The API layer binds both systems into a practical upload, resolve, and download 
 ```text
 api/                  API service (TypeScript)
 blossom/              Blossom-compatible server
-docker/               Yggdrasil image assets
 docs/                 Architecture, runbook, dependency contract
 nostream-share/       Embedded relay runtime source
 scripts/              Stack lifecycle, diagnostics, demos
@@ -99,9 +133,9 @@ Required host tools:
 
 Host constraints:
 
-- Linux host with `/dev/net/tun`
+- Linux host with `/dev/net/tun` for WireGuard
 - Permission to run containers with `NET_ADMIN`
-- Ports available: `3000`, `4000`, `8008`, `12345`
+- Ports available: `3000`, `4000`, `8008`
 
 ## Quick Start
 
@@ -124,7 +158,7 @@ What `stack-up.sh` handles for you:
 2. Bootstraps relay checkout if missing.
 3. Generates or updates `.env` via `scripts/init-env.sh`.
 4. Starts all services in `docker-compose.yml`.
-5. Discovers mesh IP and refreshes public URLs.
+5. Discovers mesh IP (WireGuard tunnel IP) and refreshes public URLs.
 6. Runs health checks and prints local + mesh endpoints.
 
 ## Validation Workflow
@@ -213,7 +247,6 @@ Main `.env` values managed by `scripts/init-env.sh`:
 | `BLOSSOM_URL` | Internal blossom URL used by API |
 | `BLOSSOM_PUBLIC_URL` | Public/mesh blossom URL stored in metadata |
 | `RELAY_PUBLIC_URL` | Public/mesh relay URL shown in output |
-| `YGGDRASIL_LISTEN_PORT` | Mesh listen port |
 | `RELAY_PUBLISH_ATTEMPTS` | Relay publish retry count |
 | `RELAY_QUERY_ATTEMPTS` | Relay query retry count |
 | `RELAY_RETRY_BASE_DELAY_MS` | Relay retry backoff base |
@@ -233,18 +266,19 @@ Main `.env` values managed by `scripts/init-env.sh`:
 | `scripts/mesh-test.sh` | Mesh connectivity + blob roundtrip proof |
 | `scripts/demo.sh` | User-facing end-to-end walkthrough |
 | `scripts/run-integration-tests.sh` | Integration test orchestration |
-| `scripts/init-env.sh` | Secret and URL bootstrap |
-| `scripts/discover-mesh-address.sh` | Resolve current mesh IPv6 |
+| `scripts/mesh-init.sh` | Initialize nvpn network, generate invite |
+| `scripts/setup-fdw.sh` | Setup DB partition mapping over the tunnel |
+| `scripts/discover-tunnel-ip.sh` | Resolve current mesh tunnel IP |
 
 ## Multi-Node Notes
 
-NostrMesh supports multi-node operation over Yggdrasil.
+NostrMesh supports multi-node operation over a private `nostr-vpn` mesh.
 
 High-level process:
 
-1. Start Node A and capture peer/public key details.
-2. Update Node B Yggdrasil config with Node A peer and key.
-3. Restart both nodes.
+1. Start Node A (`./scripts/mesh-init.sh` then `./scripts/stack-up.sh`). Note the invite link and tunnel IP.
+2. Join Node B to the mesh using the invite link from Node A. Start Node B.
+3. Establish FDW (Foreign Data Wrapper) partitioning across the mesh by running `./scripts/setup-fdw.sh` on Node A.
 4. Verify cross-node relay and blossom reachability over mesh URLs.
 
 Use the full operational walkthrough in `docs/runbook.md`.
@@ -252,7 +286,7 @@ Use the full operational walkthrough in `docs/runbook.md`.
 ## Troubleshooting Quick Hits
 
 - Mesh address missing:
-  - Check `nostrmesh-yggdrasil` logs and `/dev/net/tun` availability.
+  - Check `nostrmesh-vpn` logs and `/dev/net/tun` availability.
 - Relay metadata publish errors:
   - Run `./scripts/health-check.sh` then `./scripts/mesh-test.sh`.
 - Migration drift:
@@ -263,7 +297,7 @@ Use the full operational walkthrough in `docs/runbook.md`.
 - Blob access is authenticated with signed `kind 24242` events.
 - Blob payloads are encrypted before persistence.
 - Metadata payloads are encrypted before relay publish.
-- Yggdrasil provides encrypted transport across mesh nodes.
+- `nostr-vpn` (WireGuard) provides encrypted transport across mesh nodes.
 
 Local dev note:
 
